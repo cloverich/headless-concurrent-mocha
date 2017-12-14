@@ -8,9 +8,10 @@ The end goal is to be merely an example of how one might set-it up, with links a
 
 - [x] webpack test build
 - [x] dynamically generate entry and test.html files
-- [x] run all tests
-- [x] produce useful output
+- [x] run all tests in chrome headless
 - [x] non-zero exit on test failure
-- [ ] support arbitrarily nested source folder
+- [x] produce clean reporting output
+- [ ] support nested `__tests__` folders
 - [ ] run tests concurrently
-- [ ] ???
+- [ ] modularize and clean up code
+- [ ] provide useful notes and links in README

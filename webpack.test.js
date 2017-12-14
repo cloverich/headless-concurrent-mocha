@@ -1,29 +1,33 @@
-// const { EventEmitter } = require('../../Library/Caches/typescript/2.6/node_modules/@types/events');
 const webpack = require('webpack');
 const path = require('path');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
 const execa = require('execa');
-const runner = require('mocha-headless-chrome');
 const SpecReporter = require('mocha/lib/reporters/spec');
 const { EventEmitter } = require('events');
 const { isEmpty } = require('lodash');
 
+const runner = require('mocha-headless-chrome');
+const puppeteer = require('puppeteer');
+const reporter = require('./test/reporter');
+const chalk = require('chalk');
 
-// TODO: I wonder if there's a way to xargs this, then _read_ the filenames off of webpack
-// stats and obviate the need to use the webpack programmatic api at all?
-// Probably not, because ultimately I want to watch, and most likely need to do that programmatically
-// anyways...
+// TODO: Paramaterize
+const ENABLE_CONSOLE = false;
+
+
 async function getTestFilenames() {
   const { stdout } = await execa('find', ['src', '-type', 'f', '-name', '*.spec.*']);
   const testfiles = stdout.split('\n');
   return testfiles.reduce((entryMap, filename) => {
-    entryMap[filename] = path.resolve(__dirname, filename);
+    // todo: src/__test__/my-test.tsx --> __test__/my-test.tsx
+    entryMap[filename.replace(/\//g, '_')] = path.resolve(__dirname, filename);
     return entryMap;
   }, {});
 }
 
 async function run() {
-
+  const entry = await getTestFilenames();
+  const testfiles = Object.keys(entry);
 
   const wpConfig = {
     context: path.resolve(__dirname, 'src'),
@@ -38,7 +42,7 @@ async function run() {
     // },
     entry,
     output: {
-      path: path.resolve(__dirname, 'test'),
+      path: path.resolve(__dirname, 'test/lib'),
       filename: '[name].bundle.js',
     },
     externals: ['mocha'],
@@ -72,68 +76,132 @@ async function run() {
     ],
   }
 
+  console.log(chalk.cyan('Beginning webpack build'), '\n');
+
   webpack(wpConfig, async (err, stats) => {
     if (err) {
       console.error(err);
       return;
     }
 
+    // Print out minimal information about what was bundled.
     console.log(stats.toString({
       chunks: false,
-      colors: true
+      colors: true,
+      children: false,
+      modules: false,
     }))
 
 
-    function createOpts(filename) {
-      return {
-        file: filename,                           // test page path
-        reporter: 'none',                             // mocha reporter name
-        width: 800,                                  // viewport width
-        height: 600,                                 // viewport height
-        timeout: 120000,                             // timeout in ms
-        // executablePath: '/usr/bin/chrome-unstable',  // chrome executable path
-        visible: false,                               // show chrome window
-        args: ['no-sandbox']                         // chrome arguments
-      }
+    const browser = await puppeteer.launch();
+    let testFails = [];
+
+
+    console.log('\n', chalk.cyan('Beginning tests'), '\n');
+
+    for (testfile of testfiles) {
+      const fullname = path.resolve(__dirname, 'test/lib', `${testfile}.html`);
+      const page = await browser.newPage();
+
+      page.on('console', async ({ type, text, args }) => {
+        let report;
+
+        try {
+          const parsed = await Promise.all(args.map(a => a.jsonValue()));
+          if (parsed[0] === 'TEST_OUTPUT') {
+            report = JSON.parse(parsed[1]);
+          } else {
+            if (ENABLE_CONSOLE) console.log(text);
+          }
+        } catch (err) {
+          if (ENABLE_CONSOLE) console.log(text);
+        }
+
+        if (report) {
+          const fails = onReport(testfile, report);
+          testFails = testFails.concat(fails);
+        }
+      });
+
+      page.on('dialog', dialog => dialog.close());
+      page.on('pageerror', console.error);
+
+      await page.goto('file:///' + fullname);
+      const result = await page.evaluate(reporter);
+      await page.waitForFunction(() => window.__MOCHA_RESULT__);
+      await page.close();
     }
 
-    const runnerStub = new EventEmitter();
-    new SpecReporter(runnerStub);
-
-    const allResults = {
-      tests: [],
-      failures: [],
-      passes: [],
-    };
-
-    for (filename of testfiles) {
-      const testfile = path.resolve(__dirname, 'test', `${filename}.html`);
-      console.log('running: ', testfile);
-      const { result } = await runner(createOpts(testfile));
-
-      allResults.tests = allResults.tests.concat(result.tests);
-      allResults.failures = allResults.failures.concat(result.failures);
-      allResults.passes = allResults.passes.concat(result.passes);
-
-
-      // result.tests.forEach(test => {
-      //   Nope: This won't work -- the reporter expects to receive Test (Runnable) instances.
-      //   isEmpty(test.err) ? runnerStub.emit('pass', test) : runnerStub.emit('fail', test);
-      // })
-
-      // console.log(JSON.stringify(result, null, 2));
+    if (testFails.length) {
+      console.log('\n', chalk.red(testFails.length, 'tests failed.\n'));
+      testFails.forEach((test, idx) => {
+        console.log(`  ${idx + 1}) ${test.title}:`, chalk.red(test.err.message));
+        console.log('    Actual:', chalk.cyan(test.err.actual));
+        console.log('\n', chalk.dim(test.err.stack), '\n');
+      });
     }
 
-    console.log('\n\nFAILURE DETAILS: \n\n');
-    allResults.failures.forEach(failure => console.error(JSON.stringify(failure, null, 2)));
+    await browser.close();
 
-    console.log('\n\n');
-    console.log('TOTAL TESTS: ', allResults.tests.length);
-    console.log('PASSING: ', allResults.passes.length);
-    console.log('FAILURES: ', allResults.failures.length);
-    allResults.failures.length > 0 ? process.exit(1) : process.exit(0);
-  })
+    // Non-zero exit if any tests failed
+    process.exit(testFails.length);
+  });
 }
+
+const isWin32 = process.platform === 'win32';
+
+// Adapted from mocha/lib/base.js
+const symbols = {
+  ok: isWin32 ? '\u221A' : '✓',
+  err: isWin32 ? '\u00D7' : '✖',
+  dot: '․',
+  comma: ',',
+  bang: '!'
+};
+
+
+function onReport(testFilename, report) {
+  let currentSuite = [];
+  const fails = [];
+
+  console.log('\n', chalk.cyan(`Reporting test: ${testFilename}`), '\n');
+
+  report.events.forEach(event => {
+    switch (event.type) {
+      case 'suite_start':
+        currentSuite = event.value;
+
+        // Mocha passes up [] for first suite; don't print it.
+        if (!currentSuite.length) return;
+
+        console.log(
+          // Indent one level for each suite
+          currentSuite.map(i => '  ').join(''),
+          event.value[event.value.length - 1],
+        );
+        break;
+      case 'suite_end':
+        currentSuite.pop();
+        break;
+      case 'test':
+        console.log(
+          // Indent one level deeper than the Suite
+          [1].concat(currentSuite).map(i => '  ').join(''),
+          event.value.status === 'pass' ? chalk.green(symbols.ok) : chalk.red(symbols.err),
+          chalk.dim(event.value.title),
+        );
+
+        if (event.value.status === 'fail') fails.push(event.value);
+
+        break;
+      default:
+        throw new Error("Unexpected event type from report: ", event.type);
+    }
+  })
+
+  return fails;
+}
+
 
 // interface Stats {
 //   tests: number;

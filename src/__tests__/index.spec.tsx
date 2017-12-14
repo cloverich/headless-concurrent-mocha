@@ -39,7 +39,7 @@ describe('A basic test', function () {
   })
 
 
-  it('is no longer indented?', function () {
+  it('is no longer indented? Actually, is not run in the expected order', function () {
     const intro = document.getElementById('hiworld');
     expect(intro).to.exist;
     expect(intro!.textContent).to.contain('Hello, world');

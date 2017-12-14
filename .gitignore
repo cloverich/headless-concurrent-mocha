@@ -1,4 +1,5 @@
 node_modules
 test/src
 test/common.bundle.js
+test/lib
 .DS_STORE
