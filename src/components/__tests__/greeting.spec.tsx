@@ -2,7 +2,7 @@ import 'mocha';
 import * as React from 'react';
 import * as ReactDOM from 'react-dom';
 import { expect } from 'chai';
-import { Component2 } from '../component2'
+import { Greeting } from '../greeting'
 
 describe('A basic test', function () {
   let node: HTMLDivElement;
@@ -10,7 +10,6 @@ describe('A basic test', function () {
   before('setup', function () {
     node = document.createElement('div');
     document.body.appendChild(node);
-    ReactDOM.render(<Component2 />, node)
   })
 
   after('teardown', function () {
@@ -18,8 +17,9 @@ describe('A basic test', function () {
     document.body.removeChild(node);
   })
 
-  it('works', function () {
-    const intro = document.getElementById('hiworld');
+  it('renders', function () {
+    ReactDOM.render(<Greeting name="world" />, node)
+    const intro = document.querySelector('.Greeting');
     expect(intro).to.exist;
     expect(intro!.textContent).to.contain('Hello, world');
   })
