@@ -1,6 +1,5 @@
 import * as webpack from 'webpack'; //const webpack = require('webpack');
 import * as path from 'path';
-const HtmlWebpackPlugin = require('html-webpack-plugin');
 import * as execa from 'execa';
 import * as _ from 'lodash';
 import { launch, Browser } from 'puppeteer';
@@ -8,6 +7,8 @@ import chalk from 'chalk';
 
 import { config } from './webpack.config';
 import { reportFails, reportTests, TestResult, TestFails } from './reporters';
+// import { runMocha } from './mocha-reporter';
+const { createMochaReporter, runMocha } = require('./mocha-reporter');
 
 // TODO: Paramaterize
 const ENABLE_CONSOLE = false;
@@ -36,21 +37,6 @@ async function run() {
 
   config.entry = entry;
 
-  // TODO: Here we're generating a test html file for each test. Instead, use a single template
-  // and inject the needed elements on demand
-  // https://github.com/GoogleChrome/puppeteer/blob/master/docs/api.md#pageaddscripttagoptions
-  config.plugins!.push(...testfiles.map(filename => {
-    return new HtmlWebpackPlugin({
-      inject: false,
-      title: filename,
-      chunks: ['common', filename],
-      filename: `${filename}.html`,
-      // Default is relative to context, which is source directory
-      // re-direct to the test directory
-      template: '../test/template.html',
-    })
-  }));
-
   console.log(chalk.cyan('Beginning webpack build'), '\n');
 
   webpack(config, async (err, stats) => {
@@ -74,7 +60,6 @@ async function run() {
     process.exit(testFails.length);
   });
 }
-
 
 async function startWorkers(concurrentWorkers: number, jobs: Array<string>) {
   console.log('\n', chalk.cyan('Beginning tests'), '\n');
@@ -106,7 +91,9 @@ async function handleTest(workerId: number, job: string | undefined, jobs: Array
 }
 
 async function runTest(testfile: string, browser: Browser): Promise<TestFails> {
-  const fullname = path.resolve(__dirname, 'lib', `${testfile}.html`);
+  const htmlTestfileName = path.resolve(__dirname, `template.html`);
+  const jsTestfile = path.resolve(__dirname, 'lib', `${testfile}.bundle.js`);
+  const jsCommonfile = path.resolve(__dirname, 'lib', 'common.bundle.js');
   const page = await browser.newPage();
   let testFails;
 
@@ -132,7 +119,23 @@ async function runTest(testfile: string, browser: Browser): Promise<TestFails> {
   page.on('dialog', (dialog: any) => dialog.close());
   page.on('pageerror', console.error);
 
-  await page.goto('file:///' + fullname);
+  await page.goto('file:///' + htmlTestfileName);
+  await page.addScriptTag({
+    path: path.resolve(__dirname, '../node_modules/mocha/mocha.js')
+  })
+
+  await page.evaluate(createMochaReporter);
+
+  // TODO: Dynamically figure out what to add, esp. for chunk(s).
+  await page.addScriptTag({
+    path: jsCommonfile,
+  })
+  await page.addScriptTag({
+    path: jsTestfile,
+  })
+
+  await page.evaluate(runMocha);
+
   // TODO: __TEST_RESULT__
   await page.waitForFunction(() => (window as any).__MOCHA_RESULT__);
   await page.close();
