@@ -1,23 +1,28 @@
-const webpack = require('webpack');
-const path = require('path');
+import * as webpack from 'webpack'; //const webpack = require('webpack');
+import * as path from 'path';
 const HtmlWebpackPlugin = require('html-webpack-plugin');
-const execa = require('execa');
-const _ = require('lodash');
-const puppeteer = require('puppeteer');
-const chalk = require('chalk');
+import * as execa from 'execa';
+import * as _ from 'lodash';
+import { launch, Browser } from 'puppeteer';
+import chalk from 'chalk';
 
-const config = require('./webpack.config');
-const { reportFails, reportTests } = require('./reporters');
+import { config } from './webpack.config';
+import { reportFails, reportTests, TestResult, TestFails } from './reporters';
 
 // TODO: Paramaterize
 const ENABLE_CONSOLE = false;
 const DEBUG_WORKERS = false;
 
-async function getTestFilenames() {
+interface EntryMap {
+  [key: string]: string;
+}
+
+
+async function getTestFilenames(): Promise<EntryMap> {
   const { stdout } = await execa('find', ['src', '-type', 'f', '-name', '*.spec.*']);
   const testfiles = stdout.split('\n');
 
-  return testfiles.reduce((entryMap, filename) => {
+  return testfiles.reduce((entryMap: EntryMap, filename: string) => {
     // key will be output filename, value is where to find the source
     // todo: leave key as a nested file. Its more obvious what's happening.
     entryMap[filename.replace(/\//g, '_')] = path.resolve(__dirname, '..', filename);
@@ -34,7 +39,7 @@ async function run() {
   // TODO: Here we're generating a test html file for each test. Instead, use a single template
   // and inject the needed elements on demand
   // https://github.com/GoogleChrome/puppeteer/blob/master/docs/api.md#pageaddscripttagoptions
-  config.plugins.push(...testfiles.map(filename => {
+  config.plugins!.push(...testfiles.map(filename => {
     return new HtmlWebpackPlugin({
       inject: false,
       title: filename,
@@ -71,9 +76,9 @@ async function run() {
 }
 
 
-async function startWorkers(concurrentWorkers, jobs) {
+async function startWorkers(concurrentWorkers: number, jobs: Array<string>) {
   console.log('\n', chalk.cyan('Beginning tests'), '\n');
-  const browser = await puppeteer.launch();
+  const browser = await launch();
 
   // Don't start more workers than there are jobs
   const workerCount = Math.min(concurrentWorkers, jobs.length);
@@ -87,7 +92,7 @@ async function startWorkers(concurrentWorkers, jobs) {
   return testFails;
 }
 
-async function handleTest(workerId, job, jobs, fails, browser) {
+async function handleTest(workerId: number, job: string | undefined, jobs: Array<string>, fails: Array<TestResult>, browser: Browser): Promise<TestFails> {
   if (!job) {
     if (DEBUG_WORKERS) console.log(chalk.cyan(`\nWorker #${workerId} terminating`));
     return fails;
@@ -100,7 +105,7 @@ async function handleTest(workerId, job, jobs, fails, browser) {
   return handleTest(workerId, jobs.pop(), jobs, fails, browser)
 }
 
-async function runTest(testfile, browser) {
+async function runTest(testfile: string, browser: Browser): Promise<TestFails> {
   const fullname = path.resolve(__dirname, 'lib', `${testfile}.html`);
   const page = await browser.newPage();
   let testFails;
@@ -124,49 +129,18 @@ async function runTest(testfile, browser) {
     }
   });
 
-  page.on('dialog', dialog => dialog.close());
+  page.on('dialog', (dialog: any) => dialog.close());
   page.on('pageerror', console.error);
 
   await page.goto('file:///' + fullname);
-  await page.waitForFunction(() => window.__MOCHA_RESULT__);
+  // TODO: __TEST_RESULT__
+  await page.waitForFunction(() => (window as any).__MOCHA_RESULT__);
   await page.close();
 
   // TODO: Validate here
+  if (!testFails) throw new Error(`Error collecting test results from ${testfile}`);
+
   return testFails;
 }
-
-
-// interface Stats {
-//   tests: number;
-//   passes: number;
-//   pending: number;
-//   failures: number;
-//   start: string; // ISO8601
-//   end: string; // ISO8601
-//   duration: number;
-// }
-
-// interface TestResult {
-//   title: string;
-//   fullTitle: string; // space concatenated from parent suite titles
-//   duration: number;
-//   err: Error | {}; // instead of null, it returns an empty object :(
-// }
-
-// interface TestError {
-//   message: string;
-//   showDiff: boolean;
-//   actual: any;
-//   expected: any;
-//   stack: string;
-// }
-
-// interface Result {
-//   stats: Stats;
-//   tests: Array<TestResult>;
-//   pending: Array<TestResult>;
-//   failures: Array<TestResult>;
-//   passes: Array<TestResult>;
-// }
 
 run();

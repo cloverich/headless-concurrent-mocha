@@ -1,10 +1,10 @@
 const path = require('path');
-const webpack = require('webpack');
+import * as webpack from 'webpack';
 
 const SOURCE_DIR = path.resolve(__dirname, '..', 'src');
 const OUT_DIR = path.resolve(__dirname, 'lib');
 
-module.exports = {
+export const config: webpack.Configuration = {
   context: SOURCE_DIR,
   resolve: {
     extensions: ['.js', '.json', '.ts', '.tsx'],

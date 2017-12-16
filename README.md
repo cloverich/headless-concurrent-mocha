@@ -14,11 +14,12 @@ The end goal is to be merely an example of how one might set-it up, with links a
 - [x] support nested `__tests__` folders
 - [x] run tests concurrently
 - [ ] use webpack stats to figure out which files to run
+- [ ] maintain original `__tests__` structure (fix hard-coded `../../node_modules/mocha` call)
 - [ ] generate html from a single template, and [inject scripts][1]
 - [ ] measure and report on memory usage
 - [ ] print test epilogue
 - [ ] modularize and clean up code
-- [ ] `npm test` to run tests w/ ts-node
+- [x] `npm test` to run tests w/ ts-node
 - [ ] provide useful notes and links in README
 
 
