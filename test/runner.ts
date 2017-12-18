@@ -2,14 +2,18 @@ import chalk from 'chalk';
 import { launch, Browser } from 'puppeteer';
 import * as _ from 'lodash';
 import * as path from 'path';
-import { reportTests, TestFails, TestResult } from './local-reporters';
+import { reportTests, reportFails, TestFails, TestResult } from './local-reporters';
 const { createMochaReporter, runMocha } = require('./mocha-reporter');
 import { TestInput } from './';
 
 const ENABLE_CONSOLE = process.env.ENABLE_BROWSER_CONSOLE || false;
 const DEBUG_WORKERS = process.env.DEBUG_WORKERS || false;
 
-
+/**
+ * chrome - its using chrome headless
+ * mocha - its got mocha-specific logic
+ * runner - it runs the tests
+ */
 export class ChromeMochaRunner {
   browser: Browser;
 
@@ -28,7 +32,11 @@ export class ChromeMochaRunner {
     // As it completes, each worker returns an array of failed tests
     const testFails = await Promise.all(workersList).then(failLists => _.flatten(failLists));
     this.browser.close();
-    return testFails;
+
+    reportFails(testFails);
+
+    // TODO: Return more info: passes, failures, totals
+    return testFails.length;
   }
 
   private worker = async (
@@ -84,6 +92,9 @@ export class ChromeMochaRunner {
 
     await page.evaluate(createMochaReporter);
 
+    // NOTE: This assumes the files are always ordered so dependent files are loaded last,
+    // e.g. the common bundle containing React is loaded before the test file that uses
+    // React.
     for (const bundle of test.bundles) {
       await page.addScriptTag({
         path: bundle,

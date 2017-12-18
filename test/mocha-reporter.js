@@ -27,6 +27,7 @@ exports.createMochaReporter = function createMochaReporter() {
     };
   }
 
+  // https://github.com/mochajs/mocha/wiki/Third-party-reporters
   function MyReporter(runner) {
     const report = {
       stats: {
@@ -35,10 +36,6 @@ exports.createMochaReporter = function createMochaReporter() {
       },
       events: []
     }
-
-    // ['start', 'end', 'suite', 'suite end', 'test', 'test end', 'hook', 'hook end', 'pending'].forEach(event => {
-    //   runner.on(event, function (t) { console.log(event, typeof t, t && t.titlePath ? JSON.stringify(t.titlePath()) : t) });
-    // })
 
     runner.on('suite', function (suite) {
       report.events.push({

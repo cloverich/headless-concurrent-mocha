@@ -16,7 +16,12 @@ export const config: webpack.Configuration = {
     extensions: ['.js', '.json', '.ts', '.tsx'],
   },
 
-  entry: async (): Promise<EntryMap> => {
+  // Find all test files and use each file as an individual entry, which will cause
+  // webpack to generate a separate output bundle for each one. This is what lets us
+  // run tests separately.
+  // NOTE: Promise<any> because the webpack type thinks Promise<Map<string, string>> is
+  // invalid, even though it isn't.
+  entry: async (): Promise<any> => {
     const { stdout } = await execa('find', ['src', '-type', 'f', '-name', '*.spec.*']);
     const testfiles = stdout.split('\n');
 
@@ -45,7 +50,9 @@ export const config: webpack.Configuration = {
     ]
   },
   plugins: [
-    // Generate a single file for all code shared between tests
+    // Generate a single shared file for all common code (e.g. React).
+    // Since we're generating a separate bundle for each test, this keeps our
+    // test files small and probably speeds up the build substantially.
     new webpack.optimize.CommonsChunkPlugin({
       name: 'common',
       minChunks: 2,
