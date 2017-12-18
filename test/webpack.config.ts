@@ -1,8 +1,14 @@
 const path = require('path');
 import * as webpack from 'webpack';
+import * as execa from 'execa';
 
 const SOURCE_DIR = path.resolve(__dirname, '..', 'src');
 const OUT_DIR = path.resolve(__dirname, 'lib');
+
+
+interface EntryMap {
+  [key: string]: string;
+}
 
 export const config: webpack.Configuration = {
   context: SOURCE_DIR,
@@ -10,9 +16,17 @@ export const config: webpack.Configuration = {
     extensions: ['.js', '.json', '.ts', '.tsx'],
   },
 
-  // entry is left blank, and will be injected by the script that looks
-  // for test files.
-  // entry: ...
+  entry: async (): Promise<EntryMap> => {
+    const { stdout } = await execa('find', ['src', '-type', 'f', '-name', '*.spec.*']);
+    const testfiles = stdout.split('\n');
+
+    return testfiles.reduce((entryMap: EntryMap, filename: string) => {
+      const source = path.resolve(__dirname, '..', filename);
+
+      entryMap[filename] = source;
+      return entryMap;
+    }, {});
+  },
 
   output: {
     path: OUT_DIR,

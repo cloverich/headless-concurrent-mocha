@@ -12,10 +12,11 @@ The end goal is to be merely an example of how one might set-it up, with links a
 - [x] non-zero exit on test failure
 - [x] produce clean reporting output
 - [x] support nested `__tests__` folders
-- [ ] maintain nested `__tests__` structure in output
+- [x] maintain nested `__tests__` structure in output
 - [x] run tests concurrently
-- [ ] use webpack stats to figure out which files to run
+- [x] use webpack stats to figure out which files to run
 - [x] generate html from a single template, and [inject scripts][1]
+- [ ] obtain test report without console.log logic
 - [ ] measure and report on memory usage
 - [ ] print test epilogue
 - [ ] modularize and clean up code
