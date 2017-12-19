@@ -1,8 +1,4 @@
 
-// export function setupMocha() {
-//   mocha.setup({ reporter: MyReporter, ui: 'bdd' })
-// }
-
 exports.runMocha = function runMocha() {
   mocha.run();
 }
@@ -27,8 +23,16 @@ exports.createMochaReporter = function createMochaReporter() {
     };
   }
 
-  // https://github.com/mochajs/mocha/wiki/Third-party-reporters
-  function MyReporter(runner) {
+  /**
+   * Instead of streaming test output to the console (or stdout) as it comes,
+   * this reporter collects output into an object and stores it on window.__TEST_RESULT__,
+   * where it can be picked up by the node process.
+   *
+   * https://github.com/mochajs/mocha/wiki/Third-party-reporters
+   * https://github.com/direct-adv-interfaces/mocha-headless-chrome
+   * @param {Mocha.runner} runner
+   */
+  function CollectingReporter(runner) {
     const report = {
       stats: {
         // Possibly, test file name, total duration?
@@ -66,11 +70,9 @@ exports.createMochaReporter = function createMochaReporter() {
     });
 
     runner.on('end', () => {
-      window.__MOCHA_RESULT__ = report;
-      console.log('TEST_OUTPUT', JSON.stringify(report));
+      window.__TEST_RESULT__ = report;
     });
-
   }
 
-  mocha.setup({ reporter: MyReporter, ui: 'bdd' });
+  mocha.setup({ reporter: CollectingReporter, ui: 'bdd' });
 }

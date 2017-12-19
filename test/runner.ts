@@ -17,6 +17,11 @@ const DEBUG_WORKERS = process.env.DEBUG_WORKERS || false;
 export class ChromeMochaRunner {
   browser: Browser;
 
+  /**
+   *
+   * @param tests - Array of test files to run
+   * @param concurrency - Number of tabs to run tests in
+   */
   constructor(private tests: Array<TestInput>, private concurrency: number) { }
 
   async run() {
@@ -30,7 +35,7 @@ export class ChromeMochaRunner {
     const workersList = _.range(workerCount).map(i => this.worker(i, this.tests.pop(), this.tests, []));
 
     // As it completes, each worker returns an array of failed tests
-    const testFails = await Promise.all(workersList).then(failLists => _.flatten(failLists));
+    const testFails = await Promise.all(workersList).then(_.flatten);
     this.browser.close();
 
     reportFails(testFails);
@@ -39,6 +44,10 @@ export class ChromeMochaRunner {
     return testFails.length;
   }
 
+  /**
+   * Recursively run tests until there are no more.
+   * TODO: Better name,
+   */
   private worker = async (
     workerId: number,
     job: TestInput | undefined,
@@ -58,30 +67,21 @@ export class ChromeMochaRunner {
     return this.worker(workerId, tests.pop(), tests, fails)
   }
 
+  /**
+   * Spawn a tab, load the test, and report its results.
+   */
   private runTest = async (test: TestInput): Promise<TestFails> => {
     const htmlTestfileName = path.resolve(__dirname, `template.html`);
     const page = await this.browser.newPage();
-    let testFails;
 
-    page.on('console', async ({ type, text, args }) => {
-      let report;
+    if (ENABLE_CONSOLE) {
+      page.on('console', async ({ type, text, args }) => {
+        (console as any)[type](text);
+      });
+    }
 
-      try {
-        const parsed = await Promise.all(args.map(a => a.jsonValue()));
-        if (parsed[0] === 'TEST_OUTPUT') {
-          report = JSON.parse(parsed[1]);
-        } else {
-          if (ENABLE_CONSOLE) console.log(text);
-        }
-      } catch (err) {
-        if (ENABLE_CONSOLE) console.log(text);
-      }
-
-      if (report) {
-        testFails = reportTests(test.entry, report);
-      }
-    });
-
+    // NOTE: This won't handle new pages or tabs being opened, etc.
+    // But that could be added.
     page.on('dialog', (dialog: any) => dialog.close());
     page.on('pageerror', console.error);
 
@@ -103,13 +103,15 @@ export class ChromeMochaRunner {
 
     await page.evaluate(runMocha);
 
-    // TODO: can page.evaluateHandle be used to get the test result data, and
-    // avoid the console logic above all together?
-
-    await page.waitForFunction(() => (window as any).__MOCHA_RESULT__);
+    // Await window.__TEST_RESULT__, a variable populated by our custom mocha reporter
+    // (mocha-reporter.js) when the test run completes.
+    await page.waitForFunction(() => (window as any).__TEST_RESULT__);
+    const resultHandle = await page.evaluateHandle(() => (window as any).__TEST_RESULT__);
+    const testResults = await resultHandle.jsonValue();
+    await resultHandle.dispose();
     await page.close();
 
-    // TODO: Validate here
+    const testFails = reportTests(test.entry, testResults);
     if (!testFails) throw new Error(`Error collecting test results from ${test.entry}`);
 
     return testFails;

@@ -38,7 +38,6 @@ webpack(config, async (err, stats: any) => {
   }));
 
   // TODO: Measure memory used during build and during test runs
-
   const runner = new ChromeMochaRunner(tests, 4);
   const failCount = await runner.run();
 
