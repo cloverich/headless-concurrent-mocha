@@ -4,6 +4,7 @@ This is a work in progress, proof of concept for:
 - with webpack, react, typescript
 - concurrently
 
+## Status
 - [x] Build typescript + react test files with webpack
 - [x] support nested `__tests__` folders
 - [x] run all tests in chrome headless
