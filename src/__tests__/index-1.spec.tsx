@@ -28,7 +28,7 @@ describe('Index suite 1', function () {
     repeatTest(node);
   })
 
-  it('renders', function () {
+  it('renders again', function () {
     repeatTest(node);
   })
 
