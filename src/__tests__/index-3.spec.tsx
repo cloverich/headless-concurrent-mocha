@@ -28,8 +28,8 @@ describe('Index suite 3', function () {
     repeatTest(node);
   })
 
-  it('renders', function () {
-    repeatTest(node);
+  it('throws', function () {
+    expect(node.textContent).to.not.exist;
   })
 
   describe('Pretend its a complicated test', function () {

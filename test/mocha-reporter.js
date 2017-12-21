@@ -25,7 +25,7 @@ exports.createMochaReporter = function createMochaReporter() {
 
   /**
    * Instead of streaming test output to the console (or stdout) as it comes,
-   * this reporter collects output into an object and stores it on window.__TEST_RESULT__,
+   * this reporter collects output and stores it on window.__TEST_RESULT__,
    * where it can be picked up by the node process.
    *
    * https://github.com/mochajs/mocha/wiki/Third-party-reporters
@@ -35,10 +35,12 @@ exports.createMochaReporter = function createMochaReporter() {
   function CollectingReporter(runner) {
     const report = {
       stats: {
-        // Possibly, test file name, total duration?
-
+        passes: 0,
+        fails: 0,
       },
-      events: []
+      // Collect all mocha events as they happen, so we can replay them in local-reporter
+      events: [],
+      failedTests: [],
     }
 
     runner.on('suite', function (suite) {
@@ -60,13 +62,20 @@ exports.createMochaReporter = function createMochaReporter() {
         type: 'test',
         value: formatTest(test, null),
       });
+
+      report.stats.passes++;
     });
 
     runner.on('fail', function (test, err) {
+      const formatted = formatTest(test, err);
+
       report.events.push({
         type: 'test',
-        value: formatTest(test, err),
+        value: formatted,
       });
+
+      report.failedTests.push(formatted);
+      report.stats.fails++;
     });
 
     runner.on('end', () => {

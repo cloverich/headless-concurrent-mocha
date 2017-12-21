@@ -2,7 +2,7 @@ import chalk from 'chalk';
 import { launch, Browser } from 'puppeteer';
 import * as _ from 'lodash';
 import * as path from 'path';
-import { reportTests, reportFails, TestFails, TestResult } from './local-reporters';
+import { reportTests, epilogue, TestResult, MochaRunResult } from './local-reporters';
 const { createMochaReporter, runMocha } = require('./mocha-reporter');
 import { TestInput } from './';
 
@@ -35,13 +35,13 @@ export class ChromeMochaRunner {
     const workersList = _.range(workerCount).map(i => this.worker(i, this.tests.pop(), this.tests, []));
 
     // As it completes, each worker returns an array of failed tests
-    const testFails = await Promise.all(workersList).then(_.flatten);
+    const results = await Promise.all(workersList).then(_.flatten) as MochaRunResult[];
     this.browser.close();
 
-    reportFails(testFails);
 
-    // TODO: Return more info: passes, failures, totals
-    return testFails.length;
+    epilogue(results);
+
+    return results;
   }
 
   /**
@@ -52,25 +52,34 @@ export class ChromeMochaRunner {
     workerId: number,
     job: TestInput | undefined,
     tests: Array<TestInput>,
-    fails: Array<TestResult>
-  ): Promise<TestFails> => {
+    stats: Array<MochaRunResult>,
+  ): Promise<MochaRunResult[]> => {
 
     if (!job) {
       if (DEBUG_WORKERS) console.log(chalk.cyan(`\nWorker #${workerId} terminating`));
-      return fails;
+      return stats;
     }
 
     if (DEBUG_WORKERS) console.log(chalk.cyan(`\nWorker #${workerId} starting ${job}`));
-    fails = fails.concat(await this.runTest(job));
+
+    try {
+      const result = await this.runTest(job);
+      stats = stats.concat(result);
+    } catch (err) {
+      console.error(chalk.red(`\nWorker #${workerId} threw exception running tests for ${job}`))
+      console.error(err);
+      return this.worker(workerId, tests.pop(), tests, stats)
+    }
+
     if (DEBUG_WORKERS) console.log(chalk.cyan(`\nWorker #${workerId} completed ${job}`));
 
-    return this.worker(workerId, tests.pop(), tests, fails)
+    return this.worker(workerId, tests.pop(), tests, stats)
   }
 
   /**
    * Spawn a tab, load the test, and report its results.
    */
-  private runTest = async (test: TestInput): Promise<TestFails> => {
+  private runTest = async (test: TestInput): Promise<MochaRunResult> => {
     const htmlTestfileName = path.resolve(__dirname, `template.html`);
     const page = await this.browser.newPage();
 
@@ -107,13 +116,12 @@ export class ChromeMochaRunner {
     // (mocha-reporter.js) when the test run completes.
     await page.waitForFunction(() => (window as any).__TEST_RESULT__);
     const resultHandle = await page.evaluateHandle(() => (window as any).__TEST_RESULT__);
-    const testResults = await resultHandle.jsonValue();
+    const testResults = await resultHandle.jsonValue() as MochaRunResult;
     await resultHandle.dispose();
     await page.close();
 
-    const testFails = reportTests(test.entry, testResults);
-    if (!testFails) throw new Error(`Error collecting test results from ${test.entry}`);
+    reportTests(test.entry, testResults);
 
-    return testFails;
+    return testResults;
   }
 }

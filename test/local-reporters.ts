@@ -1,9 +1,14 @@
 import chalk from 'chalk';
+import * as _ from 'lodash';
 
-interface MochaRunResult {
+export interface MochaRunResult {
+  stats: {
+    passes: number;
+    fails: number;
+  }
+
   events: Array<MochaRunnerEvent>;
-  // todo
-  stats: null;
+  failedTests: Array<TestResult>;
 }
 
 interface MochaRunnerEvent {
@@ -26,9 +31,23 @@ export interface TestError {
   stack: string;
 }
 
-export type TestFails = Array<TestResult>;
+export function epilogue(results: MochaRunResult[]) {
+  const fails = results.reduce((fails: Array<TestResult>, result) => {
+    return fails.concat(result.failedTests);
+  }, []);
 
-export function reportFails(fails: TestFails) {
+  reportFails(fails);
+
+  const passCount = _.sum(results.map(result => result.stats.passes));
+  const failCount = _.sum(results.map(result => result.stats.fails));
+
+  console.log('\n\n');
+  console.log(chalk.cyan('Testing complete'));
+  console.log('Passes:', passCount);
+  console.log('Failures:', failCount);
+}
+
+function reportFails(fails: Array<TestResult>) {
   if (!fails.length) return;
 
   console.log('\n', chalk.red(`${fails.length} tests failed.\n`));
@@ -49,11 +68,10 @@ const symbols = {
 };
 
 
-export const reportTests = (testFilename: string, report: MochaRunResult): TestFails => {
+export const reportTests = (testFilename: string, report: MochaRunResult): void => {
   let currentSuite: Array<string> = [];
-  const fails: TestFails = [];
 
-  // console.log('\n', chalk.cyan(`Reporting test: ${testFilename}`), '\n');
+  console.log('\n', chalk.cyan(`File: ${testFilename}`));
 
   report.events.forEach(event => {
     switch (event.type) {
@@ -82,13 +100,9 @@ export const reportTests = (testFilename: string, report: MochaRunResult): TestF
           chalk.dim(test.title),
         );
 
-        if (test.status === 'fail') fails.push(test);
-
         break;
       default:
         throw new Error(`Unexpected event type from report: ${event.type}`);
     }
-  })
-
-  return fails;
+  });
 }
